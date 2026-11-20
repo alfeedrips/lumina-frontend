@@ -5,11 +5,41 @@
  */
 
 /**
- * Build a CSV string from data rows.
- *
- * Prepends a UTF-8 BOM so Excel opens the file with the correct encoding
- * (non-ASCII memo text, asset codes, etc., come through ungarbled). Uses
- * RFC 4180 CRLF line endings.
+ * Characters that spreadsheet applications (Excel, Numbers, Google Sheets)
+ * interpret as formula prefixes. OWASP CSV injection guidance: prefix with a
+ * single quote to force text interpretation.
+ */
+const FORMULA_PREFIXES = new Set(['=', '+', '-', '@', '\t', '\r']);
+
+/**
+ * Sanitize a cell value so spreadsheet applications treat it as text.
+ * Values that start with a formula prefix get a single-quote prepended,
+ * which is the OWASP-recommended defence against CSV injection.
+ */
+export function sanitizeCsvCell(value: string): string {
+  if (value.length > 0 && FORMULA_PREFIXES.has(value[0])) {
+    return "'" + value;
+  }
+  return value;
+}
+
+/**
+ * Escape and optionally sanitize one CSV cell value.
+ * Wraps in quotes when the value contains a comma, quote, or newline.
+ * Always sanitizes against formula injection.
+ */
+function formatCsvCell(raw: string): string {
+  const sanitized = sanitizeCsvCell(raw);
+  return sanitized.includes(',') || sanitized.includes('"') || sanitized.includes('\n')
+    ? `"${sanitized.replace(/"/g, '""')}"`
+    : sanitized;
+}
+
+/**
+ * Export the current filtered view as CSV.
+ * Includes every column, not only the visible ones.
+ * Notes the row limit and references bulk export for larger sets.
+ * Cell values are sanitized against spreadsheet formula injection (#363).
  */
 export function buildCSV(
   data: Record<string, unknown>[],
@@ -23,11 +53,7 @@ export function buildCSV(
     columns.map(col => {
       const val = row[col];
       if (val === null || val === undefined) return '';
-      const str = String(val);
-      // Escape CSV: wrap in quotes if contains comma, quote, or newline
-      return str.includes(',') || str.includes('"') || str.includes('\n')
-        ? `"${str.replace(/"/g, '""')}"`
-        : str;
+      return formatCsvCell(String(val));
     }).join(',')
   );
   return BOM + [headers, ...rows].join('\r\n');

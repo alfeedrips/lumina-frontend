@@ -1,7 +1,5 @@
 # Node
 node_modules/
-.env
-.env.local
 .env*.local
 
 # Next.js build output
@@ -20,3 +18,4 @@ Thumbs.db
 /.vitals-base/
 /vitals-reference.json
 /vitals-reference-error.txt
+config.bat

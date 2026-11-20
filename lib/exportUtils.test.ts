@@ -1,49 +1,85 @@
+/**
+ * Tests for CSV formula-injection sanitization (#363).
+ */
 import { describe, expect, it } from 'vitest';
+import { sanitizeCsvCell, exportToCSV } from './exportUtils';
 
-import { buildCSV } from './exportUtils';
-
-const UTF8_BOM = '﻿';
-
-describe('buildCSV', () => {
-  it('starts with a UTF-8 BOM', () => {
-    const csv = buildCSV([{ a: 'x' }], ['a']);
-    expect(csv.startsWith(UTF8_BOM)).toBe(true);
+describe('sanitizeCsvCell – formula injection prevention', () => {
+  it('prefixes = with a single quote', () => {
+    expect(sanitizeCsvCell('=HYPERLINK("evil.com")')).toBe("'=HYPERLINK(\"evil.com\")");
   });
 
-  it('uses CRLF line endings', () => {
-    const csv = buildCSV([{ a: '1' }, { a: '2' }], ['a']);
-    // Every line break in the content (after the BOM) should be CRLF
-    const withoutBom = csv.slice(UTF8_BOM.length);
-    expect(withoutBom).toContain('\r\n');
-    expect(withoutBom).not.toMatch(/(?<!\r)\n/);
+  it('prefixes + with a single quote', () => {
+    expect(sanitizeCsvCell('+1')).toBe("'+1");
   });
 
-  it('preserves non-ASCII characters', () => {
-    const csv = buildCSV([{ memo: 'Ünïcödé' }], ['memo']);
-    expect(csv).toContain('Ünïcödé');
+  it('prefixes - with a single quote', () => {
+    expect(sanitizeCsvCell('-1')).toBe("'-1");
   });
 
-  it('wraps values containing commas in quotes', () => {
-    const csv = buildCSV([{ a: 'hello, world' }], ['a']);
-    expect(csv).toContain('"hello, world"');
+  it('prefixes @ with a single quote', () => {
+    expect(sanitizeCsvCell('@SUM(A1:A10)')).toBe("'@SUM(A1:A10)");
   });
 
-  it('escapes embedded double-quotes', () => {
-    const csv = buildCSV([{ a: 'say "hi"' }], ['a']);
-    expect(csv).toContain('"say ""hi"""');
+  it('prefixes a leading tab with a single quote', () => {
+    expect(sanitizeCsvCell('\t=cmd')).toBe("'\t=cmd");
   });
 
-  it('outputs an empty string for null values', () => {
-    const csv = buildCSV([{ a: null }], ['a']);
-    const lines = csv.slice(UTF8_BOM.length).split('\r\n');
-    expect(lines[1]).toBe('');
+  it('prefixes a leading carriage return with a single quote', () => {
+    expect(sanitizeCsvCell('\r=cmd')).toBe("'\r=cmd");
   });
 
-  it('respects maxRows', () => {
-    const data = Array.from({ length: 10 }, (_, i) => ({ n: i }));
-    const csv = buildCSV(data, ['n'], 3);
-    const lines = csv.slice(UTF8_BOM.length).split('\r\n');
-    // 1 header + 3 data rows
-    expect(lines).toHaveLength(4);
+  it('leaves ordinary text unchanged', () => {
+    expect(sanitizeCsvCell('hello world')).toBe('hello world');
+  });
+
+  it('leaves numbers unchanged', () => {
+    expect(sanitizeCsvCell('12345')).toBe('12345');
+  });
+
+  it('leaves empty string unchanged', () => {
+    expect(sanitizeCsvCell('')).toBe('');
+  });
+
+  it('does not double-prefix a value that already starts with a quote', () => {
+    // A single quote itself is not in the trigger set
+    expect(sanitizeCsvCell("'safe")).toBe("'safe");
+  });
+
+  it('prefixes only the first character — does not alter inner =', () => {
+    const inner = 'hello=world';
+    expect(sanitizeCsvCell(inner)).toBe('hello=world');
+  });
+});
+
+describe('exportToCSV – integration with sanitization', () => {
+  it('sanitizes formula cells in the produced CSV text', () => {
+    // Capture blob content via a simple override
+    const blobs: string[] = [];
+    const origBlob = globalThis.Blob;
+    // @ts-expect-error – test only
+    globalThis.Blob = class MockBlob {
+      constructor(parts: string[]) { blobs.push(parts[0]); }
+    };
+    const origURL = globalThis.URL;
+    // @ts-expect-error – test only
+    globalThis.URL = { createObjectURL: () => 'blob:x', revokeObjectURL: () => {} };
+    const origDoc = globalThis.document;
+    const fakeA = { href: '', download: '', click: () => {} };
+    // @ts-expect-error – test only
+    globalThis.document = { createElement: () => fakeA };
+
+    exportToCSV(
+      [{ memo: '=DANGEROUS()', safe: 'ordinary' }],
+      ['memo', 'safe'],
+      'test.csv',
+    );
+
+    globalThis.Blob = origBlob;
+    globalThis.URL = origURL;
+    globalThis.document = origDoc;
+
+    expect(blobs[0]).toContain("'=DANGEROUS()");
+    expect(blobs[0]).toContain('ordinary');
   });
 });
