@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "node init && next dev",
+    "build": "node init && next build",
     "postbuild": "node scripts/upload-source-maps.mjs",
-    "start": "next start",
+    "start": "node init && next start",
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -15,7 +15,7 @@
     "codegen": "node scripts/gen-palette.mjs && graphql-codegen --config codegen.ts",
     "prebuild": "npm run codegen",
     "analyze": "node scripts/analyze.mjs",
-    "build:bundle": "BUNDLE_CONTENTS=true next build --experimental-build-mode compile",
+    "build:bundle": "node init && BUNDLE_CONTENTS=true next build --experimental-build-mode compile",
     "bundle:contents": "node scripts/bundle-contents.mjs",
     "bundle:report": "node scripts/bundle-report.mjs",
     "bundle:update": "npm run build:bundle && node scripts/bundle-report.mjs --update",
@@ -24,7 +24,7 @@
     "measure:compiler": "node scripts/measure-compiler.mjs",
     "test:vitals": "node scripts/vitals-run.mjs",
     "vitals:update": "node scripts/vitals-run.mjs --update",
-    "build:vitals": "npm run codegen && next build --experimental-build-mode compile && next build --experimental-build-mode generate",
+    "build:vitals": "node init && npm run codegen && next build --experimental-build-mode compile && next build --experimental-build-mode generate",
     "check:schema": "node scripts/check-schema.mjs"
   },
   "dependencies": {
